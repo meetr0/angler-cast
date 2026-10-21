@@ -30,7 +30,7 @@ from google.adk.models import Gemini
 from google.cloud import firestore
 from google.genai import types
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.7-flash"
 GCP_PROJECT_ID = "qwiklabs-gcp-04-98ad64e09af9"
 COLLECTION_NAME = "fishing_spots"
 
