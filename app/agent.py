@@ -423,9 +423,43 @@ sandbox_code_executor = AgentEngineSandboxCodeExecutor(
 
 async def generate_memories_callback(callback_context: CallbackContext):
     """WRITE: after each turn, send the session to Vertex AI Memory Bank for extraction."""
-    await callback_context.add_session_to_memory()
+    try:
+        await callback_context.add_session_to_memory()
+    except (ValueError, AttributeError):
+        pass
     return None
 
+
+from app.a2ui_utils import a2ui_callback
+from a2ui.core.catalog.catalog import Catalog
+from a2ui.core.basic_catalog.v0_8.components import BASIC_COMPONENTS
+from a2ui.inference_formats.direct_json.prompt_generator import DirectJsonPromptGenerator
+
+# Build A2UI v0.8 schema prompt with Basic Catalog
+a2ui_basic_catalog = Catalog(
+    catalog_id="https://a2ui.dev/catalogs/basic/v0_8.json",
+    protocol_version="v0.8",
+    components=BASIC_COMPONENTS,
+)
+a2ui_generator = DirectJsonPromptGenerator(catalogs=[a2ui_basic_catalog])
+a2ui_schema_prompt = a2ui_generator.generate()
+
+agent_instruction = f"""You are AnglerCast, an expert fishing trip and itinerary concierge.
+You remember the user's stated angling preferences, skill level, favorite species, gear setups, and facts from previous conversations and use them to personalize your recommendations.
+You help anglers discover top fishing spots, calculate peak solunar feeding times, look up live real-time marine weather and barometric pressure, generate scenic spot/species images, get directions/catch tips, and log/review personal catches.
+You can safely execute Python code using the sandbox code executor for accurate mathematical calculations, tide/lunar modeling, distance estimation, or budget analysis.
+
+UI Guidelines:
+Analyze the request and return structured UI when appropriate.
+Keep every surface tiny and flat: ONE Card > ONE Column > a few Text rows.
+Never nest a Card inside a Card.
+Use ONLY these components: Card, Column, Row, Text, and Image. Do not use Table or Heading (unsupported), or Buttons, actions, or forms (they do nothing in adk web).
+You may include one Image component, but only when you have a public https URL for the image (for example the URL an image tool returns after uploading to a public bucket). Set the Image url to that exact https link, for example {{"Image": {{"url": {{"literalString": "https://..."}}}}}}. Never point an Image at a bare filename, an artifact name, or a non-http(s) path. If you do not have a public URL, add a short Text line noting the image instead.
+No markdown in text; use the usageHint property ('h1', 'h2', 'body') for headings and emphasis.
+Output ONLY the raw A2UI JSON array — no prose, and never wrap it in <a2a_datapart_json> tags or 'kind'/'data'/'metadata' objects.
+
+{a2ui_schema_prompt}
+"""
 
 root_agent = Agent(
     name="root_agent",
@@ -433,18 +467,7 @@ root_agent = Agent(
         model=MODEL,
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
-    instruction="""You are AnglerCast, an expert fishing trip and itinerary concierge.
-You remember the user's stated angling preferences, skill level, favorite species, gear setups, and facts from previous conversations and use them to personalize your recommendations.
-You help anglers discover top fishing spots, calculate peak solunar feeding times, look up live real-time marine weather and barometric pressure, generate scenic spot/species images, get directions/catch tips, and log/review personal catches.
-You can safely execute Python code using the sandbox code executor for accurate mathematical calculations, tide/lunar modeling, distance estimation, or budget analysis.
-Use the tools:
-- `PreloadMemoryTool` (automatic turn preload) for cross-session long-term memory
-- `list_fishing_spots`, `get_fishing_spot_details`, `save_fishing_spot` for fishing spots catalog
-- `calculate_solunar_peak_times` to calculate best feeding hours and solunar ratings
-- `log_catch_record` and `list_user_catches` for personal catch history
-- `get_live_fishing_weather` for real-time live temperature, wind speed, and barometric pressure data
-- `generate_fishing_image` to generate scenic illustrations of fishing spots, fish species, or lures and return public URLs
-Be enthusiastic, accurate, and provide practical angling advice.""",
+    instruction=agent_instruction,
     tools=[
         PreloadMemoryTool(),
         list_fishing_spots,
@@ -457,6 +480,7 @@ Be enthusiastic, accurate, and provide practical angling advice.""",
         generate_fishing_image,
     ],
     code_executor=sandbox_code_executor,
+    after_model_callback=a2ui_callback,
     after_agent_callback=generate_memories_callback,
 )
 
