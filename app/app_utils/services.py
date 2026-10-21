@@ -60,6 +60,14 @@ def get_session_service():
 
 
 @functools.cache
+def get_artifact_service():
+    """Process-wide artifact service: GCS when a bucket is set, else in-memory."""
+    if bucket := os.environ.get("LOGS_BUCKET_NAME"):
+        return GcsArtifactService(bucket_name=bucket)
+    return InMemoryArtifactService()
+
+
+@functools.cache
 def get_memory_service():
     """Process-wide memory service: VertexAiMemoryBankService when memory bank ID is present, else in-memory."""
     if uri := os.environ.get("MEMORY_SERVICE_URI"):
