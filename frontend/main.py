@@ -126,10 +126,23 @@ def _extract_parts(parts: list) -> list[dict]:
         if isinstance(root, TextPart) and getattr(root, "text", None):
             out.append({"kind": "text", "text": root.text})
         elif getattr(root, "data", None) is not None:
+            val = root.data
             meta = getattr(root, "metadata", None) or {}
+            
+            # When ADK wraps an A2A DataPart as {'kind': 'data', 'data': {...}, 'metadata': {'mimeType': ...}}
+            if isinstance(val, dict) and "data" in val:
+                nested_meta = val.get("metadata") or {}
+                nested_mime = nested_meta.get("mimeType") if isinstance(nested_meta, dict) else None
+                if nested_mime == _A2UI_MIME:
+                    out.append({"kind": "a2ui", "data": val.get("data")})
+                    continue
+                elif "beginRendering" in val.get("data", {}) or "surfaceUpdate" in val.get("data", {}):
+                    out.append({"kind": "a2ui", "data": val.get("data")})
+                    continue
+
             mime = meta.get("mimeType") if isinstance(meta, dict) else None
-            if mime == _A2UI_MIME:
-                out.append({"kind": "a2ui", "data": root.data})
+            if mime == _A2UI_MIME or (isinstance(val, dict) and ("beginRendering" in val or "surfaceUpdate" in val)):
+                out.append({"kind": "a2ui", "data": val})
         elif isinstance(root, FilePart):
             uri = getattr(getattr(root, "file", None), "uri", None)
             if uri:
